@@ -1,0 +1,24 @@
+name: Build APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip project
+        run: unzip -q harsh-muxic.zip -d proj && ls proj
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build release APK
+        working-directory: proj/harsh-muxic
+        run: chmod +x gradlew && ./gradlew assembleProdRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Harsh-muxic-APK
+          path: proj/**/build/outputs/apk/prod/release/*.apk
