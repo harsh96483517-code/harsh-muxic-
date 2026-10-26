@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,10 +17,38 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Signing key
+        working-directory: proj/harsh-muxic
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > harsh-muxic-release.jks
+            printf "storeFile=harsh-muxic-release.jks\nstorePassword=$KS_PASS\nkeyAlias=harsh\nkeyPassword=$KS_PASS\n" > keystore.properties
+          else
+            echo "No KEYSTORE_B64 secret: using debug key (updates will not install over older builds)"
+          fi
       - name: Build release APK
         working-directory: proj/harsh-muxic
-        run: chmod +x gradlew && ./gradlew assembleProdRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleProdRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g" \
+            -PappVersion=1.8.${{ github.run_number }} -PappCode=$((1000 + ${{ github.run_number }}))
+      - name: Find APK
+        id: apk
+        run: |
+          F=$(ls proj/harsh-muxic/app/build/outputs/apk/prod/release/*universal*.apk 2>/dev/null | head -1)
+          [ -z "$F" ] && F=$(ls proj/harsh-muxic/app/build/outputs/apk/prod/release/*.apk | head -1)
+          cp "$F" Harsh-muxic.apk
       - uses: actions/upload-artifact@v4
         with:
           name: Harsh-muxic-APK
-          path: proj/**/build/outputs/apk/prod/release/*.apk
+          path: Harsh-muxic.apk
+      - name: Publish release (apps update from this)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.8.${{ github.run_number }}
+          name: Harsh muxic 1.8.${{ github.run_number }}
+          body: New update. Open Harsh muxic and tap Update.
+          files: Harsh-muxic.apk
